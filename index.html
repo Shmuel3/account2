@@ -1,0 +1,316 @@
+<!doctype html>
+<!-- One account's view-only page. It is static: it downloads an encrypted file published next to it
+     (deploy/publish-account.sh), derives the key from the password in the browser and shows the account's own
+     figures. Nothing here can reach the trading server. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Account</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --surface: #ffffff; --border: #e2e5ea; --text: #14171c; --text-2: #4f5764; --text-3: #687180;
+    --up: #0b7a3e; --down: #c0302b; --accent: #2a78d6; --yes: #1d5fbf; --no: #7c3fb5; --warn-soft: #fff4dd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1216; --surface: #171b21; --border: #2a3038; --text: #eef1f5; --text-2: #b4bcc8; --text-3: #8b94a1;
+            --up: #3ecf7e; --down: #ff6b63; --accent: #5aa2f0; --yes: #6fb0ff; --no: #c08cf0; --warn-soft: #2e2613; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--text-3); font-size: 13.5px; margin-top: 2px; }
+  .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .card h2 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin: 0 0 10px; font-weight: 700; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px 22px; }
+  .stat .label { color: var(--text-3); font-size: 13px; }
+  .stat .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .stat.big .value { font-size: 34px; }
+  .stat .note { color: var(--text-3); font-size: 12.5px; }
+  .up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--text-3); }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+  th { text-align: left; color: var(--text-3); font-weight: 600; font-size: 12.5px; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  .r { text-align: right; } th.r { padding-right: 0; padding-left: 10px; } td.r { padding-right: 0; padding-left: 10px; }
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 999px; }
+  .pill.yes { color: var(--yes); background: color-mix(in srgb, var(--yes) 13%, transparent); }
+  .pill.no { color: var(--no); background: color-mix(in srgb, var(--no) 13%, transparent); }
+  .pill.won { color: var(--up); background: color-mix(in srgb, var(--up) 13%, transparent); }
+  .pill.lost { color: var(--down); background: color-mix(in srgb, var(--down) 12%, transparent); }
+  .open { background: var(--warn-soft); }
+  svg { display: block; width: 100%; height: auto; }
+  .axis { fill: var(--text-3); font-size: 11px; }
+  .foot { color: var(--text-3); font-size: 12.5px; text-align: center; margin-top: 18px; }
+  /* The lock screen. */
+  .lock { max-width: 380px; margin: 12vh auto 0; }
+  .lock label { display: block; font-weight: 600; margin: 14px 0 6px; }
+  input[type=password], input[type=text] { width: 100%; font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  button { font: inherit; font-weight: 650; padding: 10px 16px; border-radius: 8px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
+  button.link { background: none; color: var(--text-3); padding: 0; font-weight: 500; text-decoration: underline; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 14px; margin: 0; font-weight: 400; }
+  .err { color: var(--down); margin-top: 12px; min-height: 1.4em; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="lock" class="lock card" hidden>
+    <h1 id="lock-title">Account</h1>
+    <div class="sub">View only. Enter the password you were given.</div>
+    <form id="form">
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" autofocus>
+      <div class="row">
+        <label class="check"><input id="keep" type="checkbox" checked> Remember on this device</label>
+        <button type="submit" id="go">Open</button>
+      </div>
+      <div class="err" id="err" role="alert"></div>
+    </form>
+  </div>
+
+  <div id="main" hidden>
+    <div class="head">
+      <div>
+        <h1 id="title">Account</h1>
+        <div class="sub">Your share of a pool that bets together. View only.</div>
+      </div>
+      <div class="sub" id="updated"></div>
+    </div>
+
+    <div class="card">
+      <div class="stats">
+        <div class="stat big"><div class="label">Worth now</div><div class="value" id="worth">—</div><div class="note" id="worth-note"></div></div>
+        <div class="stat big"><div class="label">Profit</div><div class="value" id="profit">—</div><div class="note" id="profit-note"></div></div>
+        <div class="stat"><div class="label">Paid in</div><div class="value" id="paid">—</div><div class="note" id="paid-note"></div></div>
+        <div class="stat"><div class="label">Bets settled</div><div class="value" id="bets-n">—</div><div class="note" id="bets-note"></div></div>
+      </div>
+    </div>
+
+    <div class="card" id="open-card" hidden>
+      <h2>Open now</h2>
+      <div id="open-text"></div>
+    </div>
+
+    <div class="card">
+      <h2>Worth over time</h2>
+      <div id="chart"></div>
+    </div>
+
+    <div class="card">
+      <h2>Bets</h2>
+      <div class="scroll" id="bets"></div>
+    </div>
+
+    <div class="card">
+      <h2>Money in and out</h2>
+      <div class="scroll" id="moves"></div>
+    </div>
+
+    <div class="foot">
+      This page updates by itself about every minute. It shows this account only and cannot change anything.
+      <br><button class="link" id="forget" type="button">Lock this page on this device</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// The encrypted figures, published next to this page.
+const DATA_URL = new URLSearchParams(location.search).get("data") || "./account.json";
+const REFRESH_MS = 60000;
+const KEY_STORE = "view-key";
+
+const $ = (id) => document.getElementById(id);
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const toB64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const money = (x) => (x === null || x === undefined ? "—" : usd.format(x));
+const signed = (x) => (x === null || x === undefined ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + usd.format(Math.abs(x)));
+const tone = (x) => (x > 0.004 ? "up" : x < -0.004 ? "down" : "muted");
+const num = (x, d = 2) => x.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: d });
+const cents = (p) => `${num(p * 100, 1)}¢`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const day = (ms) => new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+const when = (ms) => (sameDay(ms, Date.now()) ? clock(ms) : `${day(ms)}, ${clock(ms)}`);
+/** A market's 15 minutes, in this device's time: "2:00–2:15 PM". */
+function market(b) {
+  if (!b.close_ts) return when(b.decided_ms);
+  const close = b.close_ts * 1000, open = close - 15 * 60000;
+  const short = new Date(open).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M$/i, "");
+  return `${sameDay(close, Date.now()) ? "" : day(close) + ", "}${short}–${clock(close)}`;
+}
+
+let key = null;       // CryptoKey, once the password is known
+let lastTag = null;   // the etag of what is on screen
+let checkedAt = 0;
+let asOf = 0;
+
+async function fetchSealed() {
+  const res = await fetch(`${DATA_URL}${DATA_URL.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(res.status === 404 ? "nothing has been published yet" : `could not load (${res.status})`);
+  return res.json();
+}
+
+async function deriveKey(password, sealed) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: b64(sealed.salt), iterations: sealed.iterations }, base, 256);
+  return { raw: toB64(bits), key: await importKey(toB64(bits)) };
+}
+
+const importKey = (raw) => crypto.subtle.importKey("raw", b64(raw), "AES-GCM", false, ["decrypt"]);
+
+async function unseal(sealed, k) {
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(sealed.iv) }, k, b64(sealed.ct));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+function showLock(message) {
+  $("main").hidden = true;
+  $("lock").hidden = false;
+  $("err").textContent = message || "";
+  $("pw").focus();
+}
+
+function chart(points, worthNow) {
+  // A step line: the worth changes when a bet settles or money moves, and is flat in between.
+  const pts = points.map(([t, v]) => [t, v]);
+  if (worthNow !== null && pts.length) pts.push([Math.max(Date.now(), pts[pts.length - 1][0]), worthNow]);
+  if (pts.length < 2) return '<div class="muted">The line starts with the first settled bet.</div>';
+  const W = 900, H = 260, L = 64, R = 14, T = 12, B = 26;
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
+  let lo = Math.min(...pts.map((p) => p[1])), hi = Math.max(...pts.map((p) => p[1]));
+  const pad = Math.max((hi - lo) * 0.12, hi * 0.004, 0.5);
+  lo -= pad; hi += pad;
+  const x = (t) => L + ((t - t0) / Math.max(t1 - t0, 1)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  let d = `M${x(pts[0][0]).toFixed(1)},${y(pts[0][1]).toFixed(1)}`;
+  for (let i = 1; i < pts.length; i++) d += ` H${x(pts[i][0]).toFixed(1)} V${y(pts[i][1]).toFixed(1)}`;
+  const ticks = [0, 1, 2, 3].map((i) => lo + ((hi - lo) * (i + 0.5)) / 4);
+  const grid = ticks.map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--border)" stroke-width="1"/><text class="axis" x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${esc(usd.format(v).replace(/\.\d\d$/, ""))}</text>`).join("");
+  const last = pts[pts.length - 1];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Worth over time">${grid}
+    <path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>
+    <circle cx="${x(last[0]).toFixed(1)}" cy="${y(last[1]).toFixed(1)}" r="3.5" fill="var(--accent)"/>
+    <text class="axis" x="${L}" y="${H - 6}">${esc(when(t0))}</text>
+    <text class="axis" x="${W - R}" y="${H - 6}" text-anchor="end">now</text></svg>`;
+}
+
+function render(v) {
+  document.title = v.name;
+  $("title").textContent = v.name;
+  const paid = v.paid_in, worth = v.worth, profit = v.profit;
+  $("worth").textContent = money(worth);
+  $("worth-note").textContent = v.open.length ? "an open bet is counted at what it cost" : "";
+  $("profit").textContent = signed(profit);
+  $("profit").className = `value ${profit === null ? "" : tone(profit)}`;
+  $("profit-note").textContent = profit !== null && paid > 0 ? `${profit >= 0 ? "+" : "−"}${num(Math.abs(profit / paid) * 100, 2)}% on what was paid in` : "";
+  $("paid").textContent = money(paid);
+  $("paid-note").textContent = v.moves.length ? `since ${day(v.moves[0].ts_ms)}` : "";
+  $("bets-n").textContent = String(v.bets_settled);
+  $("bets-note").textContent = v.bets_settled ? `${v.bets_won} won, ${v.bets_settled - v.bets_won} lost` : "none yet";
+
+  $("open-card").hidden = v.open.length === 0;
+  $("open-text").innerHTML = v.open.map((b) =>
+    `<span class="pill ${esc(b.side)}">${esc(b.side.toUpperCase())}</span> ${num(b.contracts)} contracts at ${cents(b.price)} for ${money(b.paid)} · market ${esc(market(b))}. It settles when the market closes.`).join("<br>");
+
+  $("chart").innerHTML = chart(v.curve, worth);
+
+  $("bets").innerHTML = v.bets.length === 0
+    ? '<div class="muted">No bet has settled yet. The pool bets in about one market out of four; each bet appears here when it settles.</div>'
+    : `<table><thead><tr><th>Market</th><th>Side</th><th class="r">Contracts</th><th class="r">Price</th><th class="r">Paid</th><th>Result</th><th class="r">Profit</th><th class="r">Worth after</th></tr></thead><tbody>${
+        v.bets.map((b) => {
+          const won = b.result === b.side;
+          return `<tr><td>${esc(market(b))}</td><td><span class="pill ${esc(b.side)}">${esc(b.side.toUpperCase())}</span></td><td class="r">${num(b.contracts)}</td><td class="r">${cents(b.price)}</td><td class="r">${money(b.paid)}</td><td><span class="pill ${won ? "won" : "lost"}">${won ? "WON" : "LOST"}</span></td><td class="r ${tone(b.pnl)}">${signed(b.pnl)}</td><td class="r">${money(b.worth_after)}</td></tr>`;
+        }).join("")}</tbody></table>`;
+
+  $("moves").innerHTML = v.moves.length === 0
+    ? '<div class="muted">Nothing yet.</div>'
+    : `<table><thead><tr><th>When</th><th class="r">Amount</th></tr></thead><tbody>${
+        [...v.moves].reverse().map((m) => `<tr><td>${esc(when(m.ts_ms))}</td><td class="r ${tone(m.amount)}">${signed(m.amount)}</td></tr>`).join("")}</tbody></table>`;
+
+  asOf = v.as_of_ms;
+  $("lock").hidden = true;
+  $("main").hidden = false;
+  stamp();
+}
+
+function stamp() {
+  if (!checkedAt) return;
+  const s = Math.round((Date.now() - checkedAt) / 1000);
+  $("updated").textContent = `${asOf ? `Last change ${when(asOf)} · ` : ""}checked ${s < 5 ? "just now" : s < 90 ? `${s} s ago` : `${Math.round(s / 60)} min ago`}`;
+}
+
+/** Loads and shows the figures. False when there is no usable key (the lock screen is up). */
+async function refresh() {
+  let sealed;
+  try {
+    sealed = await fetchSealed();
+  } catch (e) {
+    if ($("main").hidden) showLock(`The page is not ready: ${e.message}.`);
+    return true;
+  }
+  if (!key) {
+    const saved = JSON.parse(localStorage.getItem(KEY_STORE) || "null");
+    if (saved && saved.salt === sealed.salt) key = await importKey(saved.raw).catch(() => null);
+    if (!key) { showLock(""); return false; }
+  }
+  try {
+    if (sealed.etag !== lastTag || $("main").hidden) {
+      render(await unseal(sealed, key));
+      lastTag = sealed.etag;
+    }
+    checkedAt = Date.now();
+    stamp();
+    return true;
+  } catch {
+    key = null;
+    localStorage.removeItem(KEY_STORE);
+    showLock("That password does not open this page.");
+    return false;
+  }
+}
+
+$("form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("err").textContent = "";
+  $("go").disabled = true;
+  try {
+    const sealed = await fetchSealed();
+    const derived = await deriveKey($("pw").value, sealed);
+    await unseal(sealed, derived.key); // throws on a wrong password
+    key = derived.key;
+    if ($("keep").checked) localStorage.setItem(KEY_STORE, JSON.stringify({ salt: sealed.salt, raw: derived.raw }));
+    $("pw").value = "";
+    lastTag = null;
+    await refresh();
+  } catch (e) {
+    $("err").textContent = e instanceof DOMException || e.name === "OperationError" ? "That password does not open this page." : `Could not open: ${e.message}.`;
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+$("forget").addEventListener("click", () => {
+  localStorage.removeItem(KEY_STORE);
+  key = null;
+  lastTag = null;
+  showLock("");
+});
+
+refresh();
+setInterval(() => { if (key && document.visibilityState === "visible") refresh(); }, REFRESH_MS);
+setInterval(stamp, 5000);
+document.addEventListener("visibilitychange", () => { if (key && document.visibilityState === "visible") refresh(); });
+</script>
+</body>
+</html>
